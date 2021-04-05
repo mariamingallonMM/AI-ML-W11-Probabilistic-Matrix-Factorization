@@ -57,7 +57,7 @@ The following is how we have implemented Probabilistic Matrix Factorization for 
 
 ## Notes on data repositories
 
-- We are using the **![ratings_sample.csv](./datasets/ratings_sample.csv)** dataset provided with the assignment.
+- We are using the **[ratings_sample.csv](./datasets/ratings_sample.csv)** dataset provided with the assignment.
 
 ## Citations & References
 
