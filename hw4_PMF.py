@@ -28,7 +28,7 @@ from scipy.spatial.distance import cdist
 from scipy.special import logsumexp
 from scipy import stats
 
-def PMF(train_data, headers = ['user_id', 'movie_id'], lam:int = 2, sigma2:float = 0.1, d:int = 5):
+def PMF(train_data, headers = ['user_id', 'movie_id'], lam:int = 2, sigma2:float = 0.1, d:int = 5, iterations:int = 50, output_iterations:list=[10,25,50]):
     """
     Implements Probabilistic Matrix Factorization.
 
@@ -40,6 +40,7 @@ def PMF(train_data, headers = ['user_id', 'movie_id'], lam:int = 2, sigma2:float
     - lam: lambda value to initialise the Gaussian zero mean distribution (default lam = 2 for this assignment).
     - sigma2: covariance of the Gaussian (default sigma2 = 0.1 for this assignment).
     - d: number of dimensions for the ranking, (default d = 5 for this assignment).
+    - iterations: number of iterations to run PMF for (default, 50 iterations).
     
     ------------
     Returns:
@@ -50,19 +51,27 @@ def PMF(train_data, headers = ['user_id', 'movie_id'], lam:int = 2, sigma2:float
 
     """
 
-    L = []
-    U_matrices = []
-    V_matrices = []
+    L_results = []
+    U_matrices = {}
+    V_matrices = {}
+    log_aps = []
 
     # first convert dataframe to the ratings matrix as a sparse matrix
     M, n, m = df_to_ratings_matrix(train_data, headers = headers)
 
-    initial_parameters = initialize_parameters(lam, n, m, d)
+    parameters = initialize_parameters(lam, n, m, d)
 
-    new_parameters = update_parameters(M, initial_parameters, lam, n, m, d)
+    for i in range(1, iterations + 1):
+        new_parameters = update_parameters(M, parameters, lam, n, m, d)
+        log_ap = log_a_posteriori(M, parameters)
+        L_results.append(log_ap)
 
+        if i in output_iterations:
+            print('Log p a-posteriori at iteration ', i, ':', log_ap)
+            U_matrices[i] = new_parameters['U']
+            V_matrices[i] = new_parameters['V']
 
-    return L, U_matrices, V_matrices
+    return L_results, U_matrices, V_matrices
 
 
 def initialize_parameters(lam, n, m, d):
@@ -91,6 +100,8 @@ def initialize_parameters(lam, n, m, d):
     U = np.zeros((d, n), dtype=np.float64)
     V = np.random.normal(0.0, 1.0 / lam, (d, m))
     
+    parameters = {}
+
     parameters['U'] = U
     parameters['V'] = V
     parameters['lambda_U'] = lam
@@ -186,7 +197,6 @@ def df_to_ratings_matrix(df, **kwargs):
     return M, n, m
 
 
-
 def update_parameters(M, parameters, lam, n, m, d):
     """
     Implements the function that updates U and V.
@@ -225,8 +235,7 @@ def update_parameters(M, parameters, lam, n, m, d):
     return parameters
 
 
-
-def log_a_posteriori(parameters, M):
+def log_a_posteriori(M, parameters):
     """
     #TODO: add docs
     Implements the Log-a posteriori with equation as follows:
@@ -242,7 +251,6 @@ def log_a_posteriori(parameters, M):
 
     """
 
-
     lambda_U = parameters['lambda_U']
     lambda_V = parameters['lambda_V']
     U = parameters['U']
@@ -253,7 +261,40 @@ def log_a_posteriori(parameters, M):
     
     return -0.5 * (np.sum(np.dot(M_UV, M_UV.T)) + lambda_U * np.sum(np.dot(U, U.T)) + lambda_V * np.sum(np.dot(V, V.T)))
 
-def predict(user_id, movie_id):
+
+def save_outputs_txt(data, output_iterations:list = [5, 10, 25]):
+    """
+    Write the outputs to csv files.
+
+    ------------
+    Parameters:
+
+    - data: a list of the resulting matrixes to write as outputs.
+    - output_iterations: the iterations to store as output csv files for the U and V matrixes.
+    
+    ------------
+    Returns:
+
+    - csv files with the output data
+
+    """
+
+    L_results = data[0]
+    np.savetxt("objective.csv", L_results, delimiter=",")
+
+    U_results = data[1]
+    V_results = data[2]
+
+    for i in output_iterations:
+        filename = "U-" + str(i) + ".csv"
+        np.savetxt(filename, U_results[i].T, delimiter=",")
+        filename = "V-" + str(i) + ".csv"
+        np.savetxt(filename, V_results[i].T, delimiter=",")
+
+    return
+
+
+def predict(parameters, user_id, movie_id):
     """
     Predicts the rating value. Note the value has been scaled within the range 0-5.
 
@@ -269,52 +310,15 @@ def predict(user_id, movie_id):
 
     """
 
-
     U = parameters['U']
     V = parameters['V']
     
-    r_ij = U[:, user_to_row[user_id]].T.reshape(1, -1) @ V[:, movie_to_column[movie_id]].reshape(-1, 1)
+    r_ij = U[:, rows[user_id]].T.reshape(1, -1) @ V[:, cols[movie_id]].reshape(-1, 1)
 
     max_rating = parameters['max_rating']
     min_rating = parameters['min_rating']
 
     return 0 if max_rating == min_rating else ((r_ij[0][0] - min_rating) / (max_rating - min_rating)) * 5.0
-
-
-
-
-def save_outputs_txt(data, iter_list:list = [5, 10, 25]):
-    """
-    Write the outputs to csv files.
-
-    ------------
-    Parameters:
-
-    - data: a list of the resulting matrixes to write as outputs.
-    - iter_list: the iterations to store as output csv files for the U and V matrixes.
-    
-    ------------
-    Returns:
-
-    - csv files with the output data
-
-    """
-
-    L_results = data[0]
-    np.savetxt("objective.csv", L_results, delimiter=",")
-
-    U_results = data[1]
-    V_results = data[2]
-
-    for i in iter_list:
-        filename = "U-" + str(i) + ".csv"
-        np.savetxt(filename, U_results[i-1], delimiter=",")
-        filename = "V-" + str(i) + ".csv"
-        np.savetxt(filename, V_results[i-1], delimiter=",")
-
-    return
-
-
 
 
 def main():
@@ -324,9 +328,9 @@ def main():
     train_data = get_data('ratings_sample.csv', path = os.path.join(os.getcwd(), 'datasets'), headers=['user_id', 'movie_id', 'rating'])
 
     # Assuming the PMF function returns Loss L, U_matrices and V_matrices
-    L, U_matrices, V_matrices = PMF(train_data, headers = ['user_id', 'movie_id'], lam = 2, sigma2 = 0.1, d = 5)
+    L_results, U_matrices, V_matrices = PMF(train_data, headers = ['user_id', 'movie_id'], lam = 2, sigma2 = 0.1, d = 5, iterations = 50, output_iterations = [10, 25, 50])
 
-    save_outputs_txt([L, U_matrices, V_matrices], [5, 10, 25])
+    save_outputs_txt(data = [L_results, U_matrices, V_matrices], output_iterations = [10, 25, 50])
 
 
 if __name__ == '__main__':
