@@ -57,7 +57,7 @@ def PMF(train_data, headers = ['user_id', 'movie_id'], lam:int = 2, sigma2:float
     log_aps = []
 
     # first convert dataframe to the ratings matrix as a sparse matrix
-    M, n, m = df_to_ratings_matrix(train_data, headers = headers)
+    M, n, m, users, objects, rows, cols = df_to_ratings_matrix(train_data, headers = headers)
 
     parameters = initialize_parameters(lam, n, m, d)
 
@@ -71,7 +71,7 @@ def PMF(train_data, headers = ['user_id', 'movie_id'], lam:int = 2, sigma2:float
             U_matrices[i] = new_parameters['U']
             V_matrices[i] = new_parameters['V']
 
-    return L_results, U_matrices, V_matrices
+    return L_results, U_matrices, V_matrices, users, objects, new_parameters, M, rows, cols
 
 
 def initialize_parameters(lam, n, m, d):
@@ -122,6 +122,8 @@ def get_data(filename, **kwargs):
     ------------
     Returns:
     - df: a dataframe of the data
+    - users: list of the users ids
+    - objects: list of the objects ids
 
     """
     
@@ -170,6 +172,7 @@ def df_to_ratings_matrix(df, **kwargs):
         users_header = 'user_id'
         movies_header = 'movie_id'
 
+
     users = df[users_header].unique()
     movies = df[movies_header].unique()
     df_values = df.values
@@ -194,7 +197,7 @@ def df_to_ratings_matrix(df, **kwargs):
     n = len(users) #number of rows
     m = len(movies) #number of columns
     
-    return M, n, m
+    return M, n, m, users, movies, rows, cols
 
 
 def update_parameters(M, parameters, lam, n, m, d):
@@ -220,6 +223,7 @@ def update_parameters(M, parameters, lam, n, m, d):
     V = parameters['V']
     lambda_U = parameters['lambda_U']
     lambda_V = parameters['lambda_V']
+
     
     for i in range(n):
         V_j = V[:, M[i, :] > 0]
@@ -231,6 +235,11 @@ def update_parameters(M, parameters, lam, n, m, d):
         
     parameters['U'] = U
     parameters['V'] = V
+
+    min_rating = np.min(M)
+    max_rating = np.max(M)
+
+
     
     return parameters
 
@@ -294,7 +303,7 @@ def save_outputs_txt(data, output_iterations:list = [5, 10, 25]):
     return
 
 
-def predict(parameters, user_id, movie_id):
+def predict(M, rows, cols, parameters, user_id, movie_id):
     """
     Predicts the rating value. Note the value has been scaled within the range 0-5.
 
@@ -302,7 +311,7 @@ def predict(parameters, user_id, movie_id):
     Parameters:
 
     - user_id:
-    - movie_id:
+    - obj_id:
    
     ------------
     Returns:
@@ -313,24 +322,53 @@ def predict(parameters, user_id, movie_id):
     U = parameters['U']
     V = parameters['V']
     
-    r_ij = U[:, rows[user_id]].T.reshape(1, -1) @ V[:, cols[movie_id]].reshape(-1, 1)
+    M_ij = U[:, rows[user_id]].T.reshape(1, -1) @ V[:, cols[movie_id]].reshape(-1, 1)
 
-    max_rating = parameters['max_rating']
-    min_rating = parameters['min_rating']
+    min_rating = np.min(M)
+    max_rating = np.max(M)
 
-    return 0 if max_rating == min_rating else ((r_ij[0][0] - min_rating) / (max_rating - min_rating)) * 5.0
+    return 0 if max_rating == min_rating else ((M_ij[0][0] - min_rating) / (max_rating - min_rating)) * 5.0
 
+
+def get_prediction(user_id, movies, M, rows, cols, parameters):
+    """
+    # TODO: docs here
+    """
+
+    predictions = np.zeros((len(movies), 1))
+    df_result = pd.DataFrame(columns=['UserID', 'MovieID', 'Prediction'])
+
+    for i, movie_id in enumerate(movies):
+        predictions[i] = predict(M, rows, cols, new_parameters, user_id, movie_id)
+        df_row = pd.DataFrame({
+            'UserID': user_id,
+            'MovieID': movie_id,
+            'Prediction': predictions[i]
+            })
+        df_result = df_result.append(df_row, sort=False)
+    
+    return df_result
 
 def main():
 
     #Uncomment next line when running in Vocareum
     #train_data=np.genfromtxt(sys.argv[1], delimiter = ',', skip_header=1)
     train_data = get_data('ratings_sample.csv', path = os.path.join(os.getcwd(), 'datasets'), headers=['user_id', 'movie_id', 'rating'])
+    out_iterations = [10, 25, 50]
 
     # Assuming the PMF function returns Loss L, U_matrices and V_matrices
-    L_results, U_matrices, V_matrices = PMF(train_data, headers = ['user_id', 'movie_id'], lam = 2, sigma2 = 0.1, d = 5, iterations = 50, output_iterations = [10, 25, 50])
+    L_results, U_matrices, V_matrices, users, movies, new_parameters, M, rows, cols = PMF(train_data, headers = ['user_id', 'movie_id'], lam = 2, sigma2 = 0.1, d = 5, iterations = 50, output_iterations = out_iterations)
 
-    save_outputs_txt(data = [L_results, U_matrices, V_matrices], output_iterations = [10, 25, 50])
+    save_outputs_txt(data = [L_results, U_matrices, V_matrices], output_iterations = out_iterations)
+
+    # Not required in Vocareum
+    df_results = get_prediction(user_id = 15, movies = movies, M = M, rows = rows, cols = cols, parameters = new_parameters)
+
+
+
+
+
+
 
 
 if __name__ == '__main__':
