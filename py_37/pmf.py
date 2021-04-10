@@ -39,8 +39,6 @@ def get_data(filename, **kwargs):
     ------------
     Returns:
     - df: a dataframe of the data
-    - users: list of the users ids
-    - objects: list of the objects ids
 
     """
     
@@ -80,7 +78,7 @@ def PMF(train_data, headers = ['user_id', 'movie_id'], lam:int = 2, sigma2:float
     ------------
     Returns:
 
-    - L: Loss
+    - L_results: objective function
     - U_matrices: matrices of users
     - V_matrices: matrices of objects
 

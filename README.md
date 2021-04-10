@@ -47,7 +47,7 @@ Whereas in content-based filering we expect for a given user to build a profile 
 The following is how we have implemented Probabilistic Matrix Factorization for building a movie recommendation system using collaborative filtering:
 
 1. Transform input ratings.csv to **M matrix**, of n rows and m columns, where each row is a user and each column is a movie. Where we don't have data, we will use a '0' instead of NaN. Users and movies shall be indexed from 1 (not '0').
-2. We estimate the R matrix by using **two low-rank matrices U and V** as: R = UT x V, where:
+2. We estimate the M matrix by using **two low-rank matrices U and V** as: M = UT x V, where:
 	a. UT is the transposed matrix of U. UT is an n x d matrix, where n is the number of users (rows of M), and d is the rank (d fixed to 5 in this assignment).
 	b. V is a d x m matrix, where m is the number of movies to rate (columns in M).
 3. We will use MAP inference coordinate ascent algorithm to estimate the missing ratings of 5 users for 5 movies not already rated in the starting dataset.

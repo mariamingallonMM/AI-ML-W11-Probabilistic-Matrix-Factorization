@@ -1,7 +1,7 @@
 """
 This code implements a probabilistic matrix factorization (PMF) per weeks 10 and 11 assignment of the machine learning module part of Columbia University Micromaster programme in AI. 
 
-Written using Python 3.7 for running on Vocareum. Version run on Vocareum for grading (all docs removed to avoid issues with grading platform)
+Written using Python 3.7 and adjusted to ensure it runs on Vocareum.
 
 Execute as follows:
 $ python3 hw4_PMF.py ratings.csv
@@ -30,43 +30,7 @@ from scipy.special import logsumexp
 from scipy import stats
 
 
-def get_data(filename, **kwargs):
-    """
-    Read data from a file given its name. Option to provide the path to the file if different from: [./datasets/in].
-    ------------
-    Parameters:
-    - filename: name of the file to be read, to get the data from.
-    - kwargs (optional): 
-        - 'headers': list of str for the headers to include in the outputs file created
-        - 'path': str of the path to where the file is read, specified if different from default ([./datasets/in])
-    ------------
-    Returns:
-    - df: a dataframe of the data
-    - users: list of the users ids
-    - objects: list of the objects ids
-
-    """
-    
-    # Define input filepath
-    if 'path' in kwargs:
-        filepath = kwargs['path']
-    else:
-        filepath = os.path.join(os.getcwd(),'datasets','out')
-
-    input_path = os.path.join(filepath, filename)
-
-    # If provided, use the title of the columns in the input dataset as headers of the dataframe
-    if 'headers' in kwargs:
-        # Read input data
-        df = pd.read_csv(input_path, names = kwargs['headers'])
-    else:
-        # Read input data
-        df = pd.read_csv(input_path)
-       
-    return df
-
-
-def PMF(train_data, headers = ['user_id', 'movie_id'], lam:int = 2, sigma2:float = 0.1, d:int = 5, iterations:int = 50, output_iterations:list=[10,25,50]):
+def PMF(train_data, headers = ['user_id', 'movie_id'], lam:int = 2, sigma2:float = 1/10, d:int = 5, iterations:int = 50, output_iterations:list=[10,25,50]):
     """
     Implements Probabilistic Matrix Factorization.
 
@@ -83,7 +47,7 @@ def PMF(train_data, headers = ['user_id', 'movie_id'], lam:int = 2, sigma2:float
     ------------
     Returns:
 
-    - L: Loss
+    - L_results: results from calculating the objective function ('L')
     - U_matrices: matrices of users
     - V_matrices: matrices of objects
 
@@ -94,6 +58,9 @@ def PMF(train_data, headers = ['user_id', 'movie_id'], lam:int = 2, sigma2:float
     V_matrices = {}
     log_aps = []
 
+    # add a header row to the train_data plain csv input file
+    train_data = pd.DataFrame(train_data, columns = ['user_id', 'movie_id', 'rating'])
+
     # first convert dataframe to the ratings matrix as a sparse matrix
     M, n, m, users, objects, rows, cols = df_to_ratings_matrix(train_data, headers = headers)
 
@@ -101,15 +68,19 @@ def PMF(train_data, headers = ['user_id', 'movie_id'], lam:int = 2, sigma2:float
 
     for i in range(1, iterations + 1):
         new_parameters = update_parameters(M, parameters, lam, n, m, d)
-        log_ap = log_a_posteriori(M, parameters)
-        L_results.append(log_ap)
+        L = objective_function(M, sigma2, lam, parameters)
+        L_results.append(L)
 
+        # TODO: check results from U_matrices and V_matrices
+        # U_matrices are exporting all same for all iterations
+        # V_matrices do not show the correct size of 5 columns, 20 rows
         if i in output_iterations:
-            print('Log p a-posteriori at iteration ', i, ':', log_ap)
+            print('Objective function L at iteration ', i, ':', L)
             U_matrices[i] = new_parameters['U']
             V_matrices[i] = new_parameters['V']
 
     return L_results, U_matrices, V_matrices, users, objects, new_parameters, M, rows, cols
+
 
 
 def initialize_parameters(lam, n, m, d):
@@ -242,7 +213,7 @@ def update_parameters(M, parameters, lam, n, m, d):
     lambda_U = parameters['lambda_U']
     lambda_V = parameters['lambda_V']
 
-    
+
     for i in range(n):
         V_j = V[:, M[i, :] > 0]
         U[:, i] = np.dot(np.linalg.inv(np.dot(V_j, V_j.T) + lambda_U * np.identity(d)), np.dot(M[i, M[i, :] > 0], V_j.T))
@@ -257,21 +228,19 @@ def update_parameters(M, parameters, lam, n, m, d):
     min_rating = np.min(M)
     max_rating = np.max(M)
 
-
-    
     return parameters
 
 
-def log_a_posteriori(M, parameters):
+def objective_function(M, sigma2, lam, parameters):
     """
-    Implements the Log-a posteriori with equation as follows:
-    
-    L=-\frac 1 2 \left(\sum_{i=1}^N\sum_{j=1}^M(R_{ij}-U_i^TV_j)_{(i,j) \in \Omega_{R_{ij}}}^2+\lambda_U\sum_{i=1}^N\|U_i\|_{Fro}^2+\lambda_V\sum_{j=1}^M\|V_j\|_{Fro}^2\right)
-
+    Calculates the result of the objective function 'L' with equation as follows:
+    L = − ∑(i,j)∈Ω12σ2(Mij−uTivj)2 − ∑Nui=1λ2∥ui∥2 − ∑Nvj=1λ2∥vj∥2
     ------------
     Parameters:
     
     - M: the ratings matrix, as sparse (zeros used to fill the nan, missing values)
+    - sigma2:
+    - lam: 
     - parameters: a dictionary with the values for: 
         - U: matrix of users
         - V: matrix of objects (movies in this case)
@@ -281,7 +250,7 @@ def log_a_posteriori(M, parameters):
     ------------
     Returns:
     
-    - L: the resulting float number from the above equation of 'L'
+    - L: the resulting float number from calculating the objective function based on the above equation of 'L'
 
     """
 
@@ -289,11 +258,20 @@ def log_a_posteriori(M, parameters):
     lambda_V = parameters['lambda_V']
     U = parameters['U']
     V = parameters['V']
+
+    # We divide L equation into its three main summands
+
+    UV = np.dot(U.T, V) # uTivj
+    M_UV = (M[M > 0] - UV[M > 0]) # (Mij−uTivj)
+
+    L1 = - (1 / (2 * sigma2)) * (np.sum((M_UV)**2))
+    L2 = - (lambda_U / 2 ) * (np.sum(np.linalg.norm(U)**2))
+    L3 = - (lambda_V / 2 ) * (np.sum(np.linalg.norm(V)**2))
+
+    L = L1 + L2 + L3
+    #L = -0.5 * (sigma2)* (np.sum(np.dot(M_UV, M_UV.T)) + lambda_U * np.sum(np.dot(U, U.T)) + lambda_V * np.sum(np.dot(V, V.T)))
     
-    UV = np.dot(U.T, V)
-    M_UV = (M[M > 0] - UV[M > 0])
-    
-    return -0.5 * (np.sum(np.dot(M_UV, M_UV.T)) + lambda_U * np.sum(np.dot(U, U.T)) + lambda_V * np.sum(np.dot(V, V.T)))
+    return L
 
 
 def save_outputs_txt(data, output_iterations:list = [5, 10, 25]):
@@ -328,100 +306,16 @@ def save_outputs_txt(data, output_iterations:list = [5, 10, 25]):
     return
 
 
-def predict(M, rows, cols, parameters, user_id, movie_id):
-    """
-    Predicts the rating value. Note the value has been scaled within the range 0-5.
-
-    ------------
-    Parameters:
-
-    - M: the ratings matrix, as sparse (zeros used to fill the nan, missing values)   
-    - rows: rows of the matrix M
-    - cols: columns of the matrix M
-    - parameters: a dictionary with the values for: 
-        - U: matrix of users
-        - V: matrix of objects (movies in this case)
-        - lambda_U: value of lambda, per the inputs
-        - lambda_V: value of lambda, per the inputs
-    - user_id: id of the users being examined
-    - movie_id: id of the objects being rated
-   
-    ------------
-    Returns:
-    
-    - rating: a float number of the predicted rating for the object and user pair
-
-    """
-
-    U = parameters['U']
-    V = parameters['V']
-    
-    M_ij = U[:, rows[user_id]].T.reshape(1, -1) @ V[:, cols[movie_id]].reshape(-1, 1)
-
-    min_rating = np.min(M)
-    max_rating = np.max(M)
-
-    return 0 if max_rating == min_rating else ((M_ij[0][0] - min_rating) / (max_rating - min_rating)) * 5.0
-
-
-def get_prediction(user_id, movies, M, rows, cols, parameters):
-    """
-    Obtain a dataframe of users Ids, movies Ids and the predicted rating for a given user Id.
-    
-    ------------
-    Parameters:
-
-    - user_id: the id of the user being examined
-    - movies: the list of unique movie Ids
-    - M: the ratings matrix, as sparse (zeros used to fill the nan, missing values)   
-    - rows: rows of the matrix M
-    - cols: columns of the matrix M
-    - parameters: a dictionary with the values for: 
-        - U: matrix of users
-        - V: matrix of objects (movies in this case)
-        - lambda_U: value of lambda, per the inputs
-        - lambda_V: value of lambda, per the inputs
-
-    ------------
-    Returns:
-    
-    - df_result: a dataframe of users Ids, movies Ids and the predicted rating for a given user Id
-
-    """
-
-    predictions = np.zeros((len(movies), 1))
-    df_result = pd.DataFrame(columns=['UserID', 'MovieID', 'Prediction'])
-
-    for i, movie_id in enumerate(movies):
-        predictions[i] = predict(M, rows, cols, new_parameters, user_id, movie_id)
-        df_row = pd.DataFrame({
-            'UserID': user_id,
-            'MovieID': movie_id,
-            'Prediction': predictions[i]
-            })
-        df_result = df_result.append(df_row, sort=False)
-    
-    return df_result
-
 def main():
 
-    #Uncomment next line when running in Vocareum
-    #train_data=np.genfromtxt(sys.argv[1], delimiter = ',', skip_header=1)
-    train_data = get_data('ratings_sample.csv', path = os.path.join(os.getcwd(), 'datasets'), headers=['user_id', 'movie_id', 'rating'])
-    out_iterations = [10, 25, 50]
+    train_data=np.genfromtxt(sys.argv[1], delimiter = ',', skip_header=1)
 
-    # Assuming the PMF function returns Loss L, U_matrices and V_matrices
-    L_results, U_matrices, V_matrices, users, movies, new_parameters, M, rows, cols = PMF(train_data, headers = ['user_id', 'movie_id'], lam = 2, sigma2 = 0.1, d = 5, iterations = 50, output_iterations = out_iterations)
+    # Call the PMF function to return the outputs
+    L_results, U_matrices, V_matrices, users, movies, new_parameters, M, rows, cols = PMF(train_data, headers = ['user_id', 'movie_id'], lam = 2, sigma2 = 0.1, d = 5, iterations = 50, output_iterations = [10, 25, 50])
 
-    save_outputs_txt(data = [L_results, U_matrices, V_matrices], output_iterations = out_iterations)
-
-    # Not required in Vocareum
-    df_results = get_prediction(user_id = 15, movies = movies, M = M, rows = rows, cols = cols, parameters = new_parameters)
+    save_outputs_txt(data = [L_results, U_matrices, V_matrices], output_iterations = [10, 25, 50])
 
 
 if __name__ == '__main__':
     main()
-
-
-
 
