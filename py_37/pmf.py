@@ -1,10 +1,7 @@
 """
 This code implements a probabilistic matrix factorization (PMF) per weeks 10 and 11 assignment of the machine learning module part of Columbia University Micromaster programme in AI. 
+Written using Python 3.7.
 
-Written using Python 3.7 for running on Vocareum. Version run on Vocareum for grading (all docs removed to avoid issues with grading platform)
-
-Execute as follows:
-$ python3 hw4_PMF.py ratings.csv
 """
 
 from __future__ import division
