@@ -48,15 +48,10 @@ def PMF(train_data, headers = ['user_id', 'movie_id'], lam:int = 2, sigma2:float
     Returns:
 
     - L_results: results from calculating the objective function ('L')
-    - U_matrices: matrices of users
-    - V_matrices: matrices of objects
 
     """
 
     L_results = []
-    U_matrices = {}
-    V_matrices = {}
-    log_aps = []
 
     # add a header row to the train_data plain csv input file
     train_data = pd.DataFrame(train_data, columns = ['user_id', 'movie_id', 'rating'])
@@ -67,20 +62,20 @@ def PMF(train_data, headers = ['user_id', 'movie_id'], lam:int = 2, sigma2:float
     parameters = initialize_parameters(lam, n, m, d)
 
     for i in range(1, iterations + 1):
-        new_parameters = update_parameters(M, parameters, lam, n, m, d)
+        parameters = update_parameters(M, parameters, lam, n, m, d)
         L = objective_function(M, sigma2, lam, parameters)
         L_results.append(L)
 
-        # TODO: check results from U_matrices and V_matrices
-        # U_matrices are exporting all same for all iterations
-        # V_matrices do not show the correct size of 5 columns, 20 rows
         if i in output_iterations:
             print('Objective function L at iteration ', i, ':', L)
-            U_matrices[i] = new_parameters['U']
-            V_matrices[i] = new_parameters['V']
+            filename = "U-" + str(i) + ".csv"
+            np.savetxt(filename, parameters['U'].T, delimiter=",")
+            filename = "V-" + str(i) + ".csv"
+            np.savetxt(filename, parameters['V'].T, delimiter=",")
 
-    return L_results, U_matrices, V_matrices, users, objects, new_parameters, M, rows, cols
+    np.savetxt("objective.csv", L_results, delimiter=",")
 
+    return L_results, users, objects, parameters, M, rows, cols
 
 
 def initialize_parameters(lam, n, m, d):
@@ -156,9 +151,12 @@ def df_to_ratings_matrix(df, **kwargs):
     users = df[users_header].unique()
     movies = df[movies_header].unique()
     df_values = df.values
+
+    n = len(users) #number of rows
+    m = len(movies) #number of columns
    
     # initialise M ratings matrix as a sparse matrix of zeros
-    M = np.zeros((len(users), len(movies)))
+    M = np.zeros((n, m))
 
     rows = {}
     cols = {}
@@ -169,13 +167,10 @@ def df_to_ratings_matrix(df, **kwargs):
     for j, movie_id in enumerate(movies):
         cols[movie_id] = j
     
-    for index, row in df.iterrows():
+    for _, row in df.iterrows():
         i = rows[row.user_id]
         j = cols[row.movie_id]
         M[i, j] = row.rating
-    
-    n = len(users) #number of rows
-    m = len(movies) #number of columns
     
     return M, n, m, users, movies, rows, cols
 
@@ -274,46 +269,14 @@ def objective_function(M, sigma2, lam, parameters):
     return L
 
 
-def save_outputs_txt(data, output_iterations:list = [5, 10, 25]):
-    """
-    Write the outputs to csv files.
-
-    ------------
-    Parameters:
-
-    - data: a list of the resulting matrixes to write as outputs.
-    - output_iterations: the iterations to store as output csv files for the U and V matrixes.
-    
-    ------------
-    Returns:
-
-    - csv files with the output data
-
-    """
-
-    L_results = data[0]
-    np.savetxt("objective.csv", L_results, delimiter=",")
-
-    U_results = data[1]
-    V_results = data[2]
-
-    for i in output_iterations:
-        filename = "U-" + str(i) + ".csv"
-        np.savetxt(filename, U_results[i].T, delimiter=",")
-        filename = "V-" + str(i) + ".csv"
-        np.savetxt(filename, V_results[i].T, delimiter=",")
-
-    return
-
-
 def main():
-
-    train_data=np.genfromtxt(sys.argv[1], delimiter = ',', skip_header=1)
+    
+    filename = os.path.join(os.getcwd(), 'datasets', 'ratings_sample.csv')
+    #train_data=np.genfromtxt(sys.argv[1], delimiter = ',')
+    train_data=np.genfromtxt(filename, delimiter = ',')
 
     # Call the PMF function to return the outputs
-    L_results, U_matrices, V_matrices, users, movies, new_parameters, M, rows, cols = PMF(train_data, headers = ['user_id', 'movie_id'], lam = 2, sigma2 = 0.1, d = 5, iterations = 50, output_iterations = [10, 25, 50])
-
-    save_outputs_txt(data = [L_results, U_matrices, V_matrices], output_iterations = [10, 25, 50])
+    L_results, users, movies, parameters, M, rows, cols = PMF(train_data, headers = ['user_id', 'movie_id'], lam = 2, sigma2 = 1/10, d = 5, iterations = 50, output_iterations = [10, 25, 50])
 
 
 if __name__ == '__main__':

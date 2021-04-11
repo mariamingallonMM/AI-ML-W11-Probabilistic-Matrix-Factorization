@@ -85,9 +85,6 @@ def PMF(train_data, headers = ['user_id', 'movie_id'], lam:int = 2, sigma2:float
     """
 
     L_results = []
-    U_matrices = {}
-    V_matrices = {}
-    log_aps = []
 
     # first convert dataframe to the ratings matrix as a sparse matrix
     M, n, m, users, objects, rows, cols = df_to_ratings_matrix(train_data, headers = headers)
@@ -95,16 +92,20 @@ def PMF(train_data, headers = ['user_id', 'movie_id'], lam:int = 2, sigma2:float
     parameters = initialize_parameters(lam, n, m, d)
 
     for i in range(1, iterations + 1):
-        new_parameters = update_parameters(M, parameters, lam, n, m, d)
-        log_ap = log_a_posteriori(M, parameters)
-        L_results.append(log_ap)
+        parameters = update_parameters(M, parameters, lam, n, m, d)
+        L = objective_function(M, sigma2, lam, parameters)
+        L_results.append(L)
 
         if i in output_iterations:
-            print('Log p a-posteriori at iteration ', i, ':', log_ap)
-            U_matrices[i] = new_parameters['U']
-            V_matrices[i] = new_parameters['V']
+            print('Objective function L at iteration ', i, ':', L)
+            filename = "U-" + str(i) + ".csv"
+            np.savetxt(filename, parameters['U'].T, delimiter=",")
+            filename = "V-" + str(i) + ".csv"
+            np.savetxt(filename, parameters['V'].T, delimiter=",")
 
-    return L_results, U_matrices, V_matrices, users, objects, new_parameters, M, rows, cols
+    np.savetxt("objective.csv", L_results, delimiter=",")
+
+    return L_results, users, objects, parameters, M, rows, cols
 
 
 def initialize_parameters(lam, n, m, d):
@@ -257,16 +258,16 @@ def update_parameters(M, parameters, lam, n, m, d):
     return parameters
 
 
-def log_a_posteriori(M, parameters):
+def objective_function(M, sigma2, lam, parameters):
     """
-    Implements the Log-a posteriori with equation as follows:
-    
-    L=-\frac 1 2 \left(\sum_{i=1}^N\sum_{j=1}^M(R_{ij}-U_i^TV_j)_{(i,j) \in \Omega_{R_{ij}}}^2+\lambda_U\sum_{i=1}^N\|U_i\|_{Fro}^2+\lambda_V\sum_{j=1}^M\|V_j\|_{Fro}^2\right)
-
+    Calculates the result of the objective function 'L' with equation as follows:
+    L = − ∑(i,j)∈Ω12σ2(Mij−uTivj)2 − ∑Nui=1λ2∥ui∥2 − ∑Nvj=1λ2∥vj∥2
     ------------
     Parameters:
     
     - M: the ratings matrix, as sparse (zeros used to fill the nan, missing values)
+    - sigma2:
+    - lam: 
     - parameters: a dictionary with the values for: 
         - U: matrix of users
         - V: matrix of objects (movies in this case)
@@ -276,7 +277,7 @@ def log_a_posteriori(M, parameters):
     ------------
     Returns:
     
-    - L: the resulting float number from the above equation of 'L'
+    - L: the resulting float number from calculating the objective function based on the above equation of 'L'
 
     """
 
@@ -284,11 +285,20 @@ def log_a_posteriori(M, parameters):
     lambda_V = parameters['lambda_V']
     U = parameters['U']
     V = parameters['V']
+
+    # We divide L equation into its three main summands
+
+    UV = np.dot(U.T, V) # uTivj
+    M_UV = (M[M > 0] - UV[M > 0]) # (Mij−uTivj)
+
+    L1 = - (1 / (2 * sigma2)) * (np.sum((M_UV)**2))
+    L2 = - (lambda_U / 2 ) * (np.sum(np.linalg.norm(U)**2))
+    L3 = - (lambda_V / 2 ) * (np.sum(np.linalg.norm(V)**2))
+
+    L = L1 + L2 + L3
+    #L = -0.5 * (sigma2)* (np.sum(np.dot(M_UV, M_UV.T)) + lambda_U * np.sum(np.dot(U, U.T)) + lambda_V * np.sum(np.dot(V, V.T)))
     
-    UV = np.dot(U.T, V)
-    M_UV = (M[M > 0] - UV[M > 0])
-    
-    return -0.5 * (np.sum(np.dot(M_UV, M_UV.T)) + lambda_U * np.sum(np.dot(U, U.T)) + lambda_V * np.sum(np.dot(V, V.T)))
+    return L
 
 
 def save_outputs_txt(data, output_iterations:list = [5, 10, 25]):
@@ -406,12 +416,12 @@ def main():
     out_iterations = [10, 25, 50]
 
     # Assuming the PMF function returns Loss L, U_matrices and V_matrices
-    L_results, U_matrices, V_matrices, users, movies, new_parameters, M, rows, cols = PMF(train_data, headers = ['user_id', 'movie_id'], lam = 2, sigma2 = 0.1, d = 5, iterations = 50, output_iterations = out_iterations)
+    L_results, users, movies, new_parameters, M, rows, cols = PMF(train_data, headers = ['user_id', 'movie_id'], lam = 2, sigma2 = 0.1, d = 5, iterations = 50, output_iterations = out_iterations)
 
-    save_outputs_txt(data = [L_results, U_matrices, V_matrices], output_iterations = out_iterations)
+    #save_outputs_txt(data = [L_results, U_matrices, V_matrices], output_iterations = out_iterations)
 
     # Not required in Vocareum
-    df_results = get_prediction(user_id = 15, movies = movies, M = M, rows = rows, cols = cols, parameters = new_parameters)
+    df_results = get_prediction(user_id = 1, movies = movies, M = M, rows = rows, cols = cols, parameters = new_parameters)
 
 
 if __name__ == '__main__':
